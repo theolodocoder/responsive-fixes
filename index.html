@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mobile layout fixes · Promise Okafor</title>
+<meta name="description" content="Four common mobile layout bugs, reproduced and fixed side by side: sidebar overlap, cut-off pricing calculator, signup button under a cookie banner, and form fields wider than the screen.">
+<style>
+  :root { --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9; --brand:#2563eb; --bad:#dc2626; --good:#059669; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); }
+  header.top { background:#0b1726; color:#fff; padding:28px 16px 24px; }
+  .wrap { max-width:1180px; margin:0 auto; padding:0 16px; }
+  header.top p.kicker { margin:0; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:#7dd3fc; font-weight:600; }
+  header.top h1 { margin:6px 0 6px; font-size:28px; line-height:1.2; }
+  header.top p.sub { margin:0; color:#cbd5e1; max-width:760px; }
+
+  .controls { display:flex; flex-wrap:wrap; gap:16px; align-items:center; margin:20px 0 8px; }
+  .controls label { font-weight:600; font-size:14px; }
+  .controls input[type=range] { width:220px; }
+  .controls output { font-variant-numeric:tabular-nums; font-weight:700; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .chips button { border:1px solid var(--line); background:#fff; border-radius:999px; padding:4px 10px; font:inherit; font-size:13px; cursor:pointer; }
+  .chips button[aria-pressed=true] { border-color:var(--brand); color:var(--brand); background:#eff6ff; }
+
+  .stage { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:24px; margin:12px 0 28px; }
+  .col h2 { font-size:15px; margin:0 0 8px; display:flex; gap:8px; align-items:center; }
+  .tag { font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; color:#fff; }
+  .tag.bad { background:var(--bad); } .tag.good { background:var(--good); }
+  .phone { margin:0 auto; width:var(--w,360px); max-width:100%; height:640px; border:10px solid #111827; border-radius:28px; background:#fff; overflow:hidden; position:relative; box-shadow:0 10px 30px rgba(15,23,42,.18); }
+  .screen { position:absolute; inset:0; overflow-y:auto; overflow-x:hidden; container-type:inline-size; }
+
+  /* ---------- mock app (shared) ---------- */
+  .app { font-size:14px; }
+  .sec-label { margin:0; padding:6px 12px; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); background:#f8fafc; border-block:1px solid var(--line); }
+  .hero { padding:20px 14px 0; background:linear-gradient(180deg,#eff6ff,#fff); height:300px; position:relative; }
+  .hero h3 { margin:0 0 6px; font-size:20px; line-height:1.2; }
+  .hero p { margin:0 0 12px; color:var(--muted); }
+  .btn { display:inline-block; background:var(--brand); color:#fff; border:0; border-radius:8px; padding:10px 16px; font:inherit; font-weight:600; }
+  .hero .cta { position:absolute; left:14px; bottom:18px; }
+  .cookie { position:absolute; left:0; right:0; bottom:0; background:#111827; color:#e5e7eb; padding:12px 14px; font-size:12.5px; z-index:5; display:flex; gap:10px; align-items:center; }
+  .cookie .ok { background:#fff; color:#111827; border-radius:6px; padding:6px 10px; font-weight:700; border:0; font:inherit; font-size:12px; }
+
+  .dash { position:relative; min-height:230px; display:flex; }
+  .sidebar { width:200px; flex:none; background:#1e293b; color:#cbd5e1; padding:12px; }
+  .sidebar a { display:block; padding:7px 8px; border-radius:6px; color:inherit; text-decoration:none; }
+  .sidebar a.on { background:#334155; color:#fff; }
+  .main { flex:1; padding:12px; min-width:0; }
+  .card { border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:8px; }
+  .card b { display:block; font-size:18px; }
+  .menu-btn { display:none; }
+
+  .calc { padding:12px; }
+  .calc table { border-collapse:collapse; width:460px; }
+  .calc th, .calc td { border:1px solid var(--line); padding:8px; text-align:left; white-space:nowrap; }
+  .calc .total { font-weight:700; }
+
+  .form { padding:12px 12px 24px; }
+  .form label { display:block; font-weight:600; margin:8px 0 4px; }
+  .form input, .form select { width:100%; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; font:inherit; }
+  .form .row { display:flex; gap:8px; }
+  .form .row input[size] { width:auto; }
+
+  /* ---------- BEFORE: the bugs ---------- */
+  .before .sidebar { position:absolute; top:0; left:0; bottom:0; z-index:2; }      /* 1: overlaps main */
+  .before .calc { overflow:hidden; }                                              /* 2: table cut off */
+  .before .form input { box-sizing:content-box; }                                 /* 4: 100% + padding + border */
+  .before .form .row input { min-width:220px; }
+
+  /* ---------- AFTER: the fixes ---------- */
+  .after .form input, .after .form select { box-sizing:border-box; max-width:100%; }           /* 4 */
+  .after .form .row { flex-wrap:wrap; } .after .form .row > * { flex:1 1 140px; min-width:0; }
+  .after .calc table { width:100%; }                                                            /* 2 */
+  @container (max-width: 400px) {
+    .after .calc table, .after .calc tbody, .after .calc tr, .after .calc td, .after .calc th { display:block; width:100%; }
+    .after .calc thead { display:none; }
+    .after .calc tr { border:1px solid var(--line); border-radius:10px; margin-bottom:8px; padding:4px 0; }
+    .after .calc td { border:0; padding:4px 10px; display:flex; justify-content:space-between; white-space:normal; }
+    .after .calc td::before { content:attr(data-label); color:var(--muted); }
+  }
+  @container (max-width: 767px) {                                                                /* 1 */
+    .after .sidebar { position:absolute; top:0; bottom:0; left:0; z-index:3; transform:translateX(-100%); transition:transform .2s; }
+    .after .dash.open .sidebar { transform:none; }
+    .after .menu-btn { display:inline-flex; margin-bottom:8px; border:1px solid var(--line); background:#fff; border-radius:8px; padding:6px 10px; font:inherit; cursor:pointer; }
+  }
+  .after .hero { padding-bottom:var(--cookie-h,0px); height:calc(300px + var(--cookie-h,0px)); } /* 3 */
+  .after .hero .cta { bottom:calc(18px + var(--cookie-h,0px)); }
+
+  /* ---------- notes ---------- */
+  .bugs { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; margin-bottom:28px; }
+  .bug { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .bug h3 { margin:0 0 4px; font-size:15px; }
+  .bug .why { margin:0 0 8px; color:var(--muted); font-size:14px; }
+  .bug code { display:block; white-space:pre-wrap; background:#0f172a; color:#e2e8f0; border-radius:8px; padding:10px; font-size:12px; line-height:1.45; }
+  .order { background:#fff; border:1px solid var(--line); border-left:4px solid var(--brand); border-radius:12px; padding:14px 16px; margin-bottom:28px; }
+  .order h2 { margin:0 0 6px; font-size:17px; }
+  .order ol { margin:0; padding-left:20px; }
+  footer { color:var(--muted); font-size:13px; padding:0 16px 32px; }
+  @media (prefers-reduced-motion: reduce) { .after .sidebar { transition:none; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <p class="kicker">Demo · responsive fixes</p>
+    <h1>Four mobile layout bugs, before and after</h1>
+    <p class="sub">A mock dashboard and landing page with the four bugs from your post: the sidebar overlapping content, a pricing calculator cut off under 400px, the signup button hidden by the cookie banner, and form fields wider than the screen. Drag the width slider to check any phone size.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="controls">
+    <label for="w">Phone width</label>
+    <input id="w" type="range" min="320" max="430" step="1" value="360" aria-describedby="wout">
+    <output id="wout">360 px</output>
+    <div class="chips" role="group" aria-label="Common phone widths">
+      <button data-w="320">320 SE</button><button data-w="360" aria-pressed="true">360 Android</button><button data-w="390">390 iPhone</button><button data-w="430">430 Pro Max</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <section class="col" aria-label="Before">
+      <h2><span class="tag bad">Before</span> what phones see today</h2>
+      <div class="phone"><div class="screen before" id="before"></div></div>
+    </section>
+    <section class="col" aria-label="After">
+      <h2><span class="tag good">After</span> with the fixes</h2>
+      <div class="phone"><div class="screen after" id="after"></div></div>
+    </section>
+  </div>
+
+  <section class="order">
+    <h2>Which one I'd fix first, and why</h2>
+    <ol>
+      <li><b>Signup button under the cookie banner.</b> Ad traffic lands on the landing page, so every hidden signup button is paid traffic lost.</li>
+      <li><b>Pricing calculator cut off.</b> It's the next step for someone deciding to buy.</li>
+      <li><b>Form fields wider than the screen.</b> They make signup feel broken on small phones.</li>
+      <li><b>Dashboard sidebar overlap.</b> It hurts existing customers, not new ones from the campaign, so it goes last this week.</li>
+    </ol>
+  </section>
+
+  <div class="bugs">
+    <article class="bug">
+      <h3>1. Sidebar overlaps the content</h3>
+      <p class="why">The sidebar is positioned on top of the page at every width. Under 768px it becomes a drawer behind a Menu button.</p>
+      <code>@media (max-width: 767px) {
+  .sidebar { position: fixed; transform: translateX(-100%); }
+  .sidebar.open { transform: none; }
+}</code>
+    </article>
+    <article class="bug">
+      <h3>2. Pricing calculator cut off</h3>
+      <p class="why">A fixed-width table inside a box with overflow hidden. Under 400px each row stacks as a small card with its label.</p>
+      <code>@media (max-width: 400px) {
+  .calc tr { display: block; }
+  .calc td::before { content: attr(data-label); }
+}</code>
+    </article>
+    <article class="bug">
+      <h3>3. Signup hidden by the cookie banner</h3>
+      <p class="why">The banner is fixed to the bottom and covers the button. The page reserves the banner's real height, measured with ResizeObserver, until it's dismissed.</p>
+      <code>body { padding-bottom: var(--cookie-h, 0px); }
+new ResizeObserver(([e]) =>
+  root.style.setProperty('--cookie-h',
+    e.borderBoxSize[0].blockSize + 'px')
+).observe(banner)</code>
+    </article>
+    <article class="bug">
+      <h3>4. Form fields wider than the screen</h3>
+      <p class="why">width: 100% plus padding and border, with content-box sizing and a min-width in a flex row. Border-box sizing and letting the row wrap fixes it.</p>
+      <code>input, select { box-sizing: border-box; max-width: 100%; }
+.row { flex-wrap: wrap; }
+.row > * { flex: 1 1 140px; min-width: 0; }</code>
+    </article>
+  </div>
+</main>
+
+<footer class="wrap">
+  Built by Promise Okafor as a demo for a job post. The app is a mock, not your product. Inside the phone frames, container queries stand in for media queries so both widths can sit side by side on a desktop screen. On the real app these would be the media queries above.
+</footer>
+
+<template id="mock">
+  <div class="app">
+    <p class="sec-label">Landing page</p>
+    <div class="hero">
+      <h3>Run your customer dashboard in one place</h3>
+      <p>Track usage, billing and support. Free for 14 days.</p>
+      <button class="btn cta">Start free trial</button>
+      <div class="cookie" data-cookie>We use cookies to improve the site. <button class="ok">Accept</button></div>
+    </div>
+
+    <p class="sec-label">Pricing calculator</p>
+    <div class="calc">
+      <table>
+        <thead><tr><th>Plan</th><th>Seats</th><th>Per seat</th><th>Monthly</th></tr></thead>
+        <tbody>
+          <tr><td data-label="Plan">Starter</td><td data-label="Seats">5</td><td data-label="Per seat">$12</td><td data-label="Monthly" class="total">$60</td></tr>
+          <tr><td data-label="Plan">Team</td><td data-label="Seats">20</td><td data-label="Per seat">$10</td><td data-label="Monthly" class="total">$200</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="sec-label">Signup form</p>
+    <form class="form" onsubmit="return false">
+      <label>Work email<input type="email" placeholder="you@company.com"></label>
+      <div class="row">
+        <label>First name<input></label>
+        <label>Last name<input></label>
+      </div>
+      <label>Company size<select><option>1–10</option><option>11–50</option></select></label>
+    </form>
+
+    <p class="sec-label">Customer dashboard</p>
+    <div class="dash">
+      <nav class="sidebar" aria-label="Dashboard"><a class="on" href="#">Overview</a><a href="#">Billing</a><a href="#">Users</a><a href="#">Settings</a></nav>
+      <div class="main">
+        <button class="menu-btn" type="button" aria-expanded="false">☰ Menu</button>
+        <div class="card">Active users<b>1,284</b></div>
+        <div class="card">MRR<b>$18,420</b></div>
+        <div class="card">Open tickets<b>7</b></div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+  const tpl = document.getElementById('mock')
+  for (const id of ['before', 'after']) document.getElementById(id).append(tpl.content.cloneNode(true))
+
+  // Fix 3: reserve the cookie banner's real height (After only).
+  const after = document.getElementById('after')
+  const banner = after.querySelector('[data-cookie]')
+  const ro = new ResizeObserver(([e]) => after.style.setProperty('--cookie-h', e.borderBoxSize[0].blockSize + 'px'))
+  ro.observe(banner)
+  for (const ok of document.querySelectorAll('.cookie .ok')) ok.addEventListener('click', (e) => {
+    const b = e.target.closest('.cookie'); b.remove()
+    if (b === banner) { ro.disconnect(); after.style.setProperty('--cookie-h', '0px') }
+  })
+
+  // Fix 1: drawer toggle (After only; the button is hidden in Before).
+  const dash = after.querySelector('.dash'), menu = after.querySelector('.menu-btn')
+  menu.addEventListener('click', () => { const open = dash.classList.toggle('open'); menu.setAttribute('aria-expanded', open) })
+
+  // Width control
+  const w = document.getElementById('w'), out = document.getElementById('wout'), chips = document.querySelectorAll('.chips button')
+  const setW = (px) => {
+    w.value = px; out.textContent = px + ' px'
+    document.documentElement.style.setProperty('--w', (+px + 20) + 'px') // + phone border
+    chips.forEach((c) => c.setAttribute('aria-pressed', c.dataset.w === String(px)))
+  }
+  w.addEventListener('input', () => setW(w.value))
+  chips.forEach((c) => c.addEventListener('click', () => setW(c.dataset.w)))
+  setW(360)
+</script>
+</body>
+</html>
